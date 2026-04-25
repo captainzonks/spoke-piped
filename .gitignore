@@ -1,0 +1,15 @@
+# Generated environment (created by Spoke)
+.env
+
+# Runtime data
+/appdata/
+
+# Local backend config (contains DB password) - keep .example only
+/config/config.properties
+
+# Editor files
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/

@@ -1,0 +1,41 @@
+# ==============================================================================
+# PIPED MODULE - TRAEFIK ROUTERS
+# ==============================================================================
+# Description: Traefik dynamic router definitions for the piped module
+# Author: Matt Barham
+# Created: 2026-04-25
+# Modified: 2026-04-25
+# Version: 1.0.0
+# Host: Your Server
+# ==============================================================================
+# Type: Traefik Dynamic Config (routers)
+# Component: module: piped
+# ==============================================================================
+# Domain Mapping:
+#   - piped.DOMAIN       -> piped-frontend (web UI)
+#   - pipedapi.DOMAIN    -> piped-backend  (Java API)
+#   - pipedproxy.DOMAIN  -> piped-proxy    (ytproxy / video segment proxy)
+# ==============================================================================
+
+http:
+  routers:
+    piped-frontend:
+      rule: Host(`piped.{{ env "DOMAIN" }}`)
+      entryPoints: "websecure"
+      priority: 100
+      middlewares: chain-public@file
+      service: piped-frontend-svc@file
+
+    piped-api:
+      rule: Host(`pipedapi.{{ env "DOMAIN" }}`)
+      entryPoints: "websecure"
+      priority: 100
+      middlewares: chain-api@file
+      service: piped-backend-svc@file
+
+    piped-proxy:
+      rule: Host(`pipedproxy.{{ env "DOMAIN" }}`)
+      entryPoints: "websecure"
+      priority: 100
+      middlewares: chain-media@file
+      service: piped-proxy-svc@file

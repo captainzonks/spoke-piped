@@ -1,0 +1,89 @@
+# ==============================================================================
+# PIPED MODULE - STACK MANIFEST
+# ==============================================================================
+# Description: Spoke module manifest for Piped (privacy-friendly YouTube frontend)
+# Author: Matt Barham
+# Created: 2026-04-25
+# Modified: 2026-04-25
+# Version: 1.0.0
+# Host: Your Server
+# ==============================================================================
+# Type: Module Manifest
+# Component: module: piped
+# ==============================================================================
+
+name: piped
+version: "1.0.0"
+description: "Piped backend, frontend, ytproxy, bg-helper, and module-local Postgres"
+
+############################  REQUIREMENTS
+
+requires:
+  networks:
+    - name: troxy
+      required: true
+  hub_services:
+    - traefik
+
+############################  ENVIRONMENT
+
+env:
+  hub:
+    - TZ
+    - DOMAIN
+    - SPOKE_DIR
+    - SECRETS_DIR
+    - APPDATA_DIR
+    - LOCALTIME
+    - CA_CERT
+    - SSL_CERT_FILE
+    - REQUESTS_CA_BUNDLE
+    - CURL_CA_BUNDLE
+
+  module:
+    - PIPED_IMAGE
+    - PIPED_FRONTEND_IMAGE
+    - PIPED_PROXY_IMAGE
+    - PIPED_BG_HELPER_IMAGE
+    - PIPED_POSTGRES_IMAGE
+    - PIPED_FRONTEND_IP
+    - PIPED_BACKEND_IP
+    - PIPED_PROXY_IP
+    - PIPED_BG_HELPER_IP
+    - PIPED_POSTGRES_IP
+    - PIPED_FRONTEND_HOSTNAME
+    - PIPED_API_HOSTNAME
+    - PIPED_PROXY_HOSTNAME
+    - PIPED_POSTGRES_DB
+    - PIPED_POSTGRES_USER
+    - PIPED_DIR
+
+############################  SECRETS
+
+secrets:
+  - name: piped_postgres_password
+    path: piped/piped_postgres_password
+    required: true
+    description: "Postgres password for the Piped database user"
+  - name: piped_proxy_hash_secret
+    path: piped/piped_proxy_hash_secret
+    required: true
+    description: "Hash secret shared between piped-backend and piped-proxy for URL signing"
+
+############################  HEALTH
+
+health:
+  - service: piped-postgres
+    port: 5432
+  - service: piped-backend
+    path: /healthcheck
+    port: 8080
+  - service: piped-frontend
+    path: /
+    port: 80
+  - service: piped-proxy
+    path: /
+    port: 8080
+  - service: piped-bg-helper
+    path: /
+    port: 8080

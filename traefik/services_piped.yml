@@ -1,0 +1,50 @@
+# ==============================================================================
+# PIPED MODULE - TRAEFIK SERVICES
+# ==============================================================================
+# Description: Traefik dynamic service definitions for the piped module
+# Author: Matt Barham
+# Created: 2026-04-25
+# Modified: 2026-04-25
+# Version: 1.0.0
+# Host: Your Server
+# ==============================================================================
+# Type: Traefik Dynamic Config (services)
+# Component: module: piped
+# ==============================================================================
+
+http:
+  services:
+    piped-frontend-svc:
+      loadBalancer:
+        servers:
+          - url: http://piped-frontend:80
+        passHostHeader: true
+        healthCheck:
+          path: /
+          interval: 30s
+          timeout: 5s
+
+    piped-backend-svc:
+      loadBalancer:
+        servers:
+          - url: http://piped-backend:8080
+        passHostHeader: true
+        healthCheck:
+          path: /healthcheck
+          interval: 30s
+          timeout: 5s
+
+    piped-proxy-svc:
+      loadBalancer:
+        servers:
+          - url: http://piped-proxy:8080
+        passHostHeader: true
+        serversTransport: piped-proxy-transport
+
+  serversTransports:
+    piped-proxy-transport:
+      forwardingTimeouts:
+        dialTimeout: 30s
+        responseHeaderTimeout: 0s
+        idleConnTimeout: 90s
+      maxIdleConnsPerHost: 100
