@@ -170,7 +170,7 @@ services:
 
     environment:
       - TZ=${TZ}
-      - BACKEND_HOSTNAME=${PIPED_API_HOSTNAME}
+      - BACKEND_HOSTNAME=${PIPED_API_SUBDOMAIN}.${DOMAIN}
       - HTTP_MODE=https
 
     volumes:

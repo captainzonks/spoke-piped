@@ -8,7 +8,7 @@ Description: Piped (privacy-friendly YouTube frontend) Spoke module
 Author: Matt Barham
 Created: 2026-04-25
 Modified: 2026-04-26
-Version: 1.1.0
+Version: 1.2.0
 ==============================================================================
 Document Type: Reference
 Audience: Developer
@@ -100,9 +100,6 @@ make deploy MODULE=piped
 | `PIPED_FRONTEND_SUBDOMAIN`| `piped`                                  | Frontend subdomain prefix            |
 | `PIPED_API_SUBDOMAIN`     | `pipedapi`                               | API subdomain prefix                 |
 | `PIPED_PROXY_SUBDOMAIN`   | `pipedproxy`                             | ytproxy subdomain prefix             |
-| `PIPED_FRONTEND_HOSTNAME` | `${PIPED_FRONTEND_SUBDOMAIN}.${DOMAIN}`  | Public frontend host (derived)       |
-| `PIPED_API_HOSTNAME`      | `${PIPED_API_SUBDOMAIN}.${DOMAIN}`       | Public API host (derived)            |
-| `PIPED_PROXY_HOSTNAME`    | `${PIPED_PROXY_SUBDOMAIN}.${DOMAIN}`     | Public ytproxy host (derived)        |
 | `PIPED_POSTGRES_DB`       | `piped`                                  | Postgres database name               |
 | `PIPED_POSTGRES_USER`     | `piped`                                  | Postgres role                        |
 | `PIPED_DIR`               | `${APPDATA_DIR}/piped`                   | Persistent data root                 |
@@ -124,6 +121,13 @@ Mapped via `modules.yml` `secrets_map`:
   startup) and must be kept in sync with `${SECRETS_DIR}/piped/piped_postgres_password`.
 - `BG_HELPER_URL` is commented out in the example config. Uncomment to wire
   the backend to the in-stack `piped-bg-helper`.
+- The `BACKEND_HOSTNAME` env var on `piped-frontend` is read once at
+  container creation by the upstream entrypoint script, which `sed`s the
+  hostname into the static JS bundle. After changing
+  `PIPED_API_SUBDOMAIN`, the frontend container must be **recreated**, not
+  just restarted (`docker compose up -d --force-recreate piped-frontend`,
+  or `make rebuild MODULE=piped SERVICE=piped-frontend`). A plain restart
+  preserves the original creation-time env and serves a stale bundle.
 
 ## References
 
