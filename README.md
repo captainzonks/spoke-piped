@@ -7,8 +7,8 @@ README.md - spoke-piped module documentation
 Description: Piped (privacy-friendly YouTube frontend) Spoke module
 Author: Matt Barham
 Created: 2026-04-25
-Modified: 2026-04-25
-Version: 1.0.0
+Modified: 2026-04-26
+Version: 1.1.0
 ==============================================================================
 Document Type: Reference
 Audience: Developer
@@ -38,24 +38,29 @@ depend on the hub Postgres.
 
 ## Routing
 
-Three Traefik subdomains are exposed on `${DOMAIN}`:
+Three Traefik subdomains are exposed on `${DOMAIN}`. The subdomain prefix
+for each is templated and overridable per site (e.g. rebrand to
+`tube/tubeapi/tubeproxy` from `modules.yml` env_overrides):
 
-| Host                      | Target          | Purpose                |
-|---------------------------|-----------------|------------------------|
-| `piped.${DOMAIN}`         | piped-frontend  | Web UI                 |
-| `pipedapi.${DOMAIN}`      | piped-backend   | API for clients        |
-| `pipedproxy.${DOMAIN}`    | piped-proxy     | Video segment proxy    |
+| Host                                          | Target          | Default prefix | Purpose             |
+|-----------------------------------------------|-----------------|----------------|---------------------|
+| `${PIPED_FRONTEND_SUBDOMAIN}.${DOMAIN}`       | piped-frontend  | `piped`        | Web UI              |
+| `${PIPED_API_SUBDOMAIN}.${DOMAIN}`            | piped-backend   | `pipedapi`     | API for clients     |
+| `${PIPED_PROXY_SUBDOMAIN}.${DOMAIN}`          | piped-proxy     | `pipedproxy`   | Video segment proxy |
 
 `piped-bg-helper` is internal-only.
+
+> **Note:** Subdomain templating requires Spoke's `deploy_traefik_rules.sh`
+> at version 1.3.0 or later (envsubst on rule YAMLs at deploy time).
 
 ## Prerequisites
 
 - Spoke hub deployed with `troxy` network
 - Traefik available as a hub service
 - Three DNS records (or one wildcard) pointing to the host:
-  - `piped.${DOMAIN}`
-  - `pipedapi.${DOMAIN}`
-  - `pipedproxy.${DOMAIN}`
+  - `${PIPED_FRONTEND_SUBDOMAIN}.${DOMAIN}` (default `piped.${DOMAIN}`)
+  - `${PIPED_API_SUBDOMAIN}.${DOMAIN}` (default `pipedapi.${DOMAIN}`)
+  - `${PIPED_PROXY_SUBDOMAIN}.${DOMAIN}` (default `pipedproxy.${DOMAIN}`)
 
 ## Quick Start
 
@@ -92,9 +97,12 @@ make deploy MODULE=piped
 | `PIPED_PROXY_IP`          | `192.168.35.28`                          | ytproxy static IP on troxy           |
 | `PIPED_BG_HELPER_IP`      | `192.168.35.29`                          | bg-helper static IP on troxy         |
 | `PIPED_POSTGRES_IP`       | `192.168.35.30`                          | Postgres static IP on troxy          |
-| `PIPED_FRONTEND_HOSTNAME` | `piped.${DOMAIN}`                        | Public frontend host                 |
-| `PIPED_API_HOSTNAME`      | `pipedapi.${DOMAIN}`                     | Public API host                      |
-| `PIPED_PROXY_HOSTNAME`    | `pipedproxy.${DOMAIN}`                   | Public ytproxy host                  |
+| `PIPED_FRONTEND_SUBDOMAIN`| `piped`                                  | Frontend subdomain prefix            |
+| `PIPED_API_SUBDOMAIN`     | `pipedapi`                               | API subdomain prefix                 |
+| `PIPED_PROXY_SUBDOMAIN`   | `pipedproxy`                             | ytproxy subdomain prefix             |
+| `PIPED_FRONTEND_HOSTNAME` | `${PIPED_FRONTEND_SUBDOMAIN}.${DOMAIN}`  | Public frontend host (derived)       |
+| `PIPED_API_HOSTNAME`      | `${PIPED_API_SUBDOMAIN}.${DOMAIN}`       | Public API host (derived)            |
+| `PIPED_PROXY_HOSTNAME`    | `${PIPED_PROXY_SUBDOMAIN}.${DOMAIN}`     | Public ytproxy host (derived)        |
 | `PIPED_POSTGRES_DB`       | `piped`                                  | Postgres database name               |
 | `PIPED_POSTGRES_USER`     | `piped`                                  | Postgres role                        |
 | `PIPED_DIR`               | `${APPDATA_DIR}/piped`                   | Persistent data root                 |
