@@ -4,37 +4,41 @@
 # Description: Traefik dynamic router definitions for the piped module
 # Author: Matt Barham
 # Created: 2026-04-25
-# Modified: 2026-04-25
-# Version: 1.0.0
+# Modified: 2026-04-26
+# Version: 1.1.0
 # Host: Your Server
 # ==============================================================================
 # Type: Traefik Dynamic Config (routers)
 # Component: module: piped
 # ==============================================================================
-# Domain Mapping:
-#   - piped.DOMAIN       -> piped-frontend (web UI)
-#   - pipedapi.DOMAIN    -> piped-backend  (Java API)
-#   - pipedproxy.DOMAIN  -> piped-proxy    (ytproxy / video segment proxy)
+# Domain Mapping (subdomain prefix is templated, see .env.example):
+#   - ${PIPED_FRONTEND_SUBDOMAIN}.DOMAIN  -> piped-frontend (web UI)
+#   - ${PIPED_API_SUBDOMAIN}.DOMAIN       -> piped-backend  (Java API)
+#   - ${PIPED_PROXY_SUBDOMAIN}.DOMAIN     -> piped-proxy    (ytproxy)
+# ==============================================================================
+# Note: ${VAR} placeholders are expanded by Spoke's deploy_traefik_rules.sh
+#       (>= 1.3.0) at deploy time using the module's generated .env. The
+#       {{ env "DOMAIN" }} template is expanded by Traefik at runtime.
 # ==============================================================================
 
 http:
   routers:
     piped-frontend:
-      rule: Host(`piped.{{ env "DOMAIN" }}`)
+      rule: Host(`${PIPED_FRONTEND_SUBDOMAIN}.{{ env "DOMAIN" }}`)
       entryPoints: "websecure"
       priority: 100
       middlewares: chain-public@file
       service: piped-frontend-svc@file
 
     piped-api:
-      rule: Host(`pipedapi.{{ env "DOMAIN" }}`)
+      rule: Host(`${PIPED_API_SUBDOMAIN}.{{ env "DOMAIN" }}`)
       entryPoints: "websecure"
       priority: 100
       middlewares: chain-api@file
       service: piped-backend-svc@file
 
     piped-proxy:
-      rule: Host(`pipedproxy.{{ env "DOMAIN" }}`)
+      rule: Host(`${PIPED_PROXY_SUBDOMAIN}.{{ env "DOMAIN" }}`)
       entryPoints: "websecure"
       priority: 100
       middlewares: chain-media@file
