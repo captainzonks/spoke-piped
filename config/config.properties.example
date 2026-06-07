@@ -44,7 +44,8 @@ MATRIX_SERVER:https://matrix-client.matrix.org
 #MATRIX_TOKEN:INSERT_HERE
 
 # bg-helper for PoTokens (uncomment to enable, in-stack service)
-#BG_HELPER_URL:http://piped-bg-helper:8080
+# Note: bg-helper-server listens on port 3000, not 8080.
+#BG_HELPER_URL:http://piped-bg-helper:3000
 
 # Geo restriction federation (optional)
 #GEO_RESTRICTION_CHECKER_URL:INSERT_HERE

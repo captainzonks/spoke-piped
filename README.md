@@ -31,7 +31,7 @@ and other compatible frontends.
 | `piped-backend`   | Piped API (Java/Hibernate)                 | 8080  | troxy   |
 | `piped-frontend`  | Piped web UI (static SPA)                  | 80    | troxy   |
 | `piped-proxy`     | YouTube media segment proxy (Rust)         | 8080  | troxy   |
-| `piped-bg-helper` | PoToken provider for backend               | 8080  | troxy   |
+| `piped-bg-helper` | PoToken provider for backend               | 3000  | troxy   |
 
 This module ships its own Postgres so it remains standalone. It does not
 depend on the hub Postgres.
