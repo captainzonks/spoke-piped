@@ -37,6 +37,16 @@ http:
       middlewares: chain-api@file
       service: piped-backend-svc@file
 
+    # /streams is the only po_token-gated path: route it to the yt-dlp resolver
+    # so adaptive 1080p/4K is returned. Higher priority than piped-api so the
+    # path match wins; all other API paths fall through to piped-backend.
+    piped-api-streams:
+      rule: Host(`${PIPED_API_SUBDOMAIN}.{{ env "DOMAIN" }}`) && PathPrefix(`/streams`)
+      entryPoints: "websecure"
+      priority: 200
+      middlewares: chain-api@file
+      service: piped-resolver-svc@file
+
     piped-proxy:
       rule: Host(`${PIPED_PROXY_SUBDOMAIN}.{{ env "DOMAIN" }}`)
       entryPoints: "websecure"
