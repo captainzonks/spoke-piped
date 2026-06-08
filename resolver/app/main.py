@@ -62,7 +62,12 @@ async def streams(video_id: str) -> dict:
     except Exception as exc:  # noqa: BLE001 — surface extractor faults as 502
         raise HTTPException(status_code=502, detail=f"extraction failed: {exc}") from exc
 
-    _streams_cache[video_id] = data
+    # Don't cache an incomplete result (some adaptive streams failed range
+    # probing); let the next request retry so playback isn't degraded for the
+    # whole TTL.
+    partial = data.pop("_partial", False)
+    if not partial:
+        _streams_cache[video_id] = data
     return data
 
 

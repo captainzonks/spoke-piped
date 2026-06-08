@@ -19,10 +19,32 @@ schema unchanged:
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 # yt-dlp protocols that are not progressive HTTP ranges. Native players and
 # ffmpeg both play the direct googlevideo ranges more reliably than these.
 _SKIP_PROTOCOLS = ("m3u8", "m3u8_native", "http_dash_segments", "dash")
+
+
+def _proxy_stream_url(url: str, proxy_url: str) -> str:
+    """Rewrite a raw googlevideo URL through a Piped media proxy.
+
+    Matches Piped-Backend's ``rewriteURL`` scheme so the Piped web frontend and
+    piped-proxy can serve the stream without browser CORS errors:
+    ``{proxy}{path}?{original_query}&host={original_host}``.
+
+    When ``proxy_url`` is empty the raw URL is returned unchanged — native
+    players (ExoPlayer/ffmpeg) can fetch googlevideo directly.
+    """
+    if not proxy_url or not url:
+        return url
+    src = urlsplit(url)
+    if not src.netloc:
+        return url
+    sep = "&" if src.query else ""
+    query = f"{src.query}{sep}host={src.netloc}"
+    proxy = urlsplit(proxy_url)
+    return urlunsplit((proxy.scheme, proxy.netloc, src.path, query, ""))
 
 
 def _is_skippable(fmt: dict[str, Any]) -> bool:
@@ -112,11 +134,32 @@ def _map_chapters(info: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def map_video_stream(fmt: dict[str, Any]) -> dict[str, Any]:
+def _content_length(fmt: dict[str, Any]) -> int:
+    val = fmt.get("filesize") or fmt.get("filesize_approx")
+    if val:
+        return int(val)
+    # Fall back to the googlevideo `clen` query param.
+    clen = parse_qs(urlsplit(fmt.get("url", "") or "").query).get("clen")
+    return int(clen[0]) if clen and clen[0].isdigit() else 0
+
+
+def _segment_ranges(fmt: dict[str, Any]) -> dict[str, int]:
+    """DASH SegmentBase byte ranges (probed in ranges.py), or -1 sentinels.
+
+    Piped uses -1 to mean "unknown"; the frontend only builds a SegmentBase
+    when the values are present and non-negative.
+    """
+    rng = fmt.get("_segment_range")
+    if rng:
+        return rng
+    return {"initStart": -1, "initEnd": -1, "indexStart": -1, "indexEnd": -1}
+
+
+def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     height = int(fmt.get("height") or 0)
     return {
-        "url": fmt["url"],
+        "url": _proxy_stream_url(fmt["url"], proxy_url),
         "mimeType": f"video/{'mp4' if ext == 'mp4' else 'webm'}",
         "format": _video_format(ext),
         "codec": fmt.get("vcodec"),
@@ -127,14 +170,16 @@ def map_video_stream(fmt: dict[str, Any]) -> dict[str, Any]:
         "bitrate": _bitrate_bps(fmt, "tbr", "vbr"),
         "videoOnly": True,
         "itag": _itag(fmt.get("format_id", "")),
+        "contentLength": _content_length(fmt),
+        **_segment_ranges(fmt),
     }
 
 
-def map_audio_stream(fmt: dict[str, Any]) -> dict[str, Any]:
+def map_audio_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     abr = int(float(fmt.get("abr") or 0))
     return {
-        "url": fmt["url"],
+        "url": _proxy_stream_url(fmt["url"], proxy_url),
         "mimeType": f"audio/{'mp4' if ext in ('m4a', 'mp4') else 'webm'}",
         "format": _audio_format(ext),
         "codec": fmt.get("acodec"),
@@ -144,6 +189,8 @@ def map_audio_stream(fmt: dict[str, Any]) -> dict[str, Any]:
         "itag": _itag(fmt.get("format_id", "")),
         "audioTrackType": _track_type(fmt),
         "audioTrackLocale": fmt.get("language"),
+        "contentLength": _content_length(fmt),
+        **_segment_ranges(fmt),
     }
 
 
@@ -159,6 +206,7 @@ def map_streams_response(
     """
     videos: list[dict[str, Any]] = []
     audios: list[dict[str, Any]] = []
+    dropped = 0
 
     for fmt in info.get("formats", []):
         if _is_skippable(fmt):
@@ -167,14 +215,24 @@ def map_streams_response(
         acodec = fmt.get("acodec", "none")
         video_only = vcodec != "none" and acodec == "none"
         audio_only = acodec != "none" and vcodec == "none"
-        if video_only and fmt.get("height"):
-            videos.append(map_video_stream(fmt))
-        elif audio_only:
-            audios.append(map_audio_stream(fmt))
-        # muxed (both codecs) and codec-less formats are intentionally dropped:
-        # clients want adaptive video-only + audio-only pairs.
+        is_candidate = (video_only and fmt.get("height")) or audio_only
+        if not is_candidate:
+            # muxed (both codecs) and codec-less formats are intentionally
+            # dropped: clients want adaptive video-only + audio-only pairs.
+            continue
+        # When serving a Piped frontend (proxy_url set) the client builds a DASH
+        # SegmentBase per stream, so a stream whose byte ranges could not be
+        # probed would produce an invalid manifest (shaka 4002). Drop those;
+        # native clients (no proxy_url) keep every stream regardless.
+        if proxy_url and "_segment_range" not in fmt:
+            dropped += 1
+            continue
+        if video_only:
+            videos.append(map_video_stream(fmt, proxy_url))
+        else:
+            audios.append(map_audio_stream(fmt, proxy_url))
 
-    return {
+    response = {
         "title": info.get("title", "") or "",
         "description": info.get("description", "") or "",
         "uploadDate": _iso_date(info.get("upload_date")),
@@ -206,6 +264,12 @@ def map_streams_response(
         "chapters": _map_chapters(info),
         "previewFrames": [],
     }
+    if dropped:
+        # Internal marker (popped before serialization): some adaptive streams
+        # failed range-probing, so this result is incomplete and must not be
+        # cached — the next request retries and should recover them.
+        response["_partial"] = True
+    return response
 
 
 def map_search_response(info: dict[str, Any]) -> dict[str, Any]:
