@@ -19,10 +19,32 @@ schema unchanged:
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 # yt-dlp protocols that are not progressive HTTP ranges. Native players and
 # ffmpeg both play the direct googlevideo ranges more reliably than these.
 _SKIP_PROTOCOLS = ("m3u8", "m3u8_native", "http_dash_segments", "dash")
+
+
+def _proxy_stream_url(url: str, proxy_url: str) -> str:
+    """Rewrite a raw googlevideo URL through a Piped media proxy.
+
+    Matches Piped-Backend's ``rewriteURL`` scheme so the Piped web frontend and
+    piped-proxy can serve the stream without browser CORS errors:
+    ``{proxy}{path}?{original_query}&host={original_host}``.
+
+    When ``proxy_url`` is empty the raw URL is returned unchanged — native
+    players (ExoPlayer/ffmpeg) can fetch googlevideo directly.
+    """
+    if not proxy_url or not url:
+        return url
+    src = urlsplit(url)
+    if not src.netloc:
+        return url
+    sep = "&" if src.query else ""
+    query = f"{src.query}{sep}host={src.netloc}"
+    proxy = urlsplit(proxy_url)
+    return urlunsplit((proxy.scheme, proxy.netloc, src.path, query, ""))
 
 
 def _is_skippable(fmt: dict[str, Any]) -> bool:
@@ -112,11 +134,11 @@ def _map_chapters(info: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def map_video_stream(fmt: dict[str, Any]) -> dict[str, Any]:
+def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     height = int(fmt.get("height") or 0)
     return {
-        "url": fmt["url"],
+        "url": _proxy_stream_url(fmt["url"], proxy_url),
         "mimeType": f"video/{'mp4' if ext == 'mp4' else 'webm'}",
         "format": _video_format(ext),
         "codec": fmt.get("vcodec"),
@@ -130,11 +152,11 @@ def map_video_stream(fmt: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def map_audio_stream(fmt: dict[str, Any]) -> dict[str, Any]:
+def map_audio_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     abr = int(float(fmt.get("abr") or 0))
     return {
-        "url": fmt["url"],
+        "url": _proxy_stream_url(fmt["url"], proxy_url),
         "mimeType": f"audio/{'mp4' if ext in ('m4a', 'mp4') else 'webm'}",
         "format": _audio_format(ext),
         "codec": fmt.get("acodec"),
@@ -168,9 +190,9 @@ def map_streams_response(
         video_only = vcodec != "none" and acodec == "none"
         audio_only = acodec != "none" and vcodec == "none"
         if video_only and fmt.get("height"):
-            videos.append(map_video_stream(fmt))
+            videos.append(map_video_stream(fmt, proxy_url))
         elif audio_only:
-            audios.append(map_audio_stream(fmt))
+            audios.append(map_audio_stream(fmt, proxy_url))
         # muxed (both codecs) and codec-less formats are intentionally dropped:
         # clients want adaptive video-only + audio-only pairs.
 

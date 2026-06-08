@@ -191,6 +191,22 @@ def test_full_piped_shape_present_for_frontend() -> None:
     assert resp["livestream"] is False
 
 
+def test_stream_urls_proxied_when_proxy_url_set() -> None:
+    resp = map_streams_response(_video_info(), proxy_url="https://proxy.example")
+    streams = resp["videoStreams"] + resp["audioStreams"]
+    assert streams
+    for s in streams:
+        # Piped rewriteURL scheme: {proxy}{path}?{query}&host={orig host}
+        assert s["url"].startswith("https://proxy.example/")
+        assert "host=gv" in s["url"]
+
+
+def test_stream_urls_raw_when_no_proxy_url() -> None:
+    resp = map_streams_response(_video_info())  # proxy_url defaults to ""
+    assert resp["videoStreams"][0]["url"].startswith("https://gv/")
+    assert resp["audioStreams"][0]["url"].startswith("https://gv/")
+
+
 def test_search_maps_entries_to_piped_items() -> None:
     info = {
         "entries": [
