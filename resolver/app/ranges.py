@@ -133,21 +133,23 @@ def _probe_one(fmt: dict[str, Any]) -> dict[str, int] | None:
     ext = (fmt.get("ext") or "").lower()
     container = (fmt.get("container") or "").lower()
     is_webm = "webm" in ext or "webm" in container
-    try:
-        found = _ebml_index(reader) if is_webm else _mp4_index(reader)
-    except OSError:
-        return None
-    if not found:
-        return None
-    index_start, index_size = found
-    if index_start <= 0:
-        return None
-    return {
-        "initStart": 0,
-        "initEnd": index_start - 1,
-        "indexStart": index_start,
-        "indexEnd": index_start + index_size - 1,
-    }
+    # Retry once: a transient range-read failure should not silently drop an
+    # otherwise-good stream from the manifest.
+    for _ in range(2):
+        try:
+            found = _ebml_index(reader) if is_webm else _mp4_index(reader)
+        except OSError:
+            found = None
+        if found:
+            index_start, index_size = found
+            if index_start > 0:
+                return {
+                    "initStart": 0,
+                    "initEnd": index_start - 1,
+                    "indexStart": index_start,
+                    "indexEnd": index_start + index_size - 1,
+                }
+    return None
 
 
 def attach_segment_ranges(formats: list[dict[str, Any]]) -> None:

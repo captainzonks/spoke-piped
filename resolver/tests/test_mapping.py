@@ -191,14 +191,48 @@ def test_full_piped_shape_present_for_frontend() -> None:
     assert resp["livestream"] is False
 
 
+def _with_ranges(info: dict) -> dict:
+    """Mark every adaptive format as probed (so proxy-mode keeps them)."""
+    for f in info["formats"]:
+        v = f.get("vcodec", "none") != "none"
+        a = f.get("acodec", "none") != "none"
+        if v != a:  # adaptive (video-only XOR audio-only)
+            f["_segment_range"] = {
+                "initStart": 0,
+                "initEnd": 100,
+                "indexStart": 101,
+                "indexEnd": 200,
+            }
+    return info
+
+
 def test_stream_urls_proxied_when_proxy_url_set() -> None:
-    resp = map_streams_response(_video_info(), proxy_url="https://proxy.example")
+    resp = map_streams_response(
+        _with_ranges(_video_info()), proxy_url="https://proxy.example"
+    )
     streams = resp["videoStreams"] + resp["audioStreams"]
     assert streams
     for s in streams:
         # Piped rewriteURL scheme: {proxy}{path}?{query}&host={orig host}
         assert s["url"].startswith("https://proxy.example/")
         assert "host=gv" in s["url"]
+
+
+def test_proxy_mode_drops_streams_without_probed_ranges() -> None:
+    info = _video_info()
+    # Probe only the H.264 video + M4A audio; leave the rest unprobed.
+    for f in info["formats"]:
+        if f["format_id"] in ("137", "140"):
+            f["_segment_range"] = {
+                "initStart": 0, "initEnd": 1, "indexStart": 2, "indexEnd": 3,
+            }
+    resp = map_streams_response(info, proxy_url="https://proxy.example")
+    # Only the two probed adaptive streams survive in proxy mode.
+    assert {v["itag"] for v in resp["videoStreams"]} == {137}
+    assert {a["itag"] for a in resp["audioStreams"]} == {140}
+    # Without a proxy, nothing is dropped.
+    raw = map_streams_response(info)
+    assert len(raw["videoStreams"]) == 2 and len(raw["audioStreams"]) == 2
 
 
 def test_stream_urls_raw_when_no_proxy_url() -> None:

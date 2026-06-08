@@ -65,13 +65,17 @@ def extract_streams(config: Config, video_id: str) -> dict[str, Any]:
         )
     # Probe DASH byte ranges for the adaptive formats we will emit, so the
     # Piped frontend can build a working SegmentBase (yt-dlp drops these).
-    adaptive = [
-        f
-        for f in info.get("formats", [])
-        if not _is_skippable(f)
-        and (f.get("vcodec", "none") != "none") != (f.get("acodec", "none") != "none")
-    ]
-    attach_segment_ranges(adaptive)
+    # Only needed when serving a frontend (PROXY_URL set); native clients
+    # ignore the ranges, so skip the extra round-trips for generic deploys.
+    if config.proxy_url:
+        adaptive = [
+            f
+            for f in info.get("formats", [])
+            if not _is_skippable(f)
+            and (f.get("vcodec", "none") != "none")
+            != (f.get("acodec", "none") != "none")
+        ]
+        attach_segment_ranges(adaptive)
     response = map_streams_response(info, proxy_url=config.proxy_url)
     if not response["videoStreams"] and not response["audioStreams"]:
         raise ExtractionError(

@@ -214,6 +214,12 @@ def map_streams_response(
         acodec = fmt.get("acodec", "none")
         video_only = vcodec != "none" and acodec == "none"
         audio_only = acodec != "none" and vcodec == "none"
+        # When serving a Piped frontend (proxy_url set) the client builds a DASH
+        # SegmentBase per stream, so a stream whose byte ranges could not be
+        # probed would produce an invalid manifest (shaka 4002). Drop those;
+        # native clients (no proxy_url) keep every stream regardless.
+        if proxy_url and "_segment_range" not in fmt:
+            continue
         if video_only and fmt.get("height"):
             videos.append(map_video_stream(fmt, proxy_url))
         elif audio_only:
