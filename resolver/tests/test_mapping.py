@@ -230,9 +230,20 @@ def test_proxy_mode_drops_streams_without_probed_ranges() -> None:
     # Only the two probed adaptive streams survive in proxy mode.
     assert {v["itag"] for v in resp["videoStreams"]} == {137}
     assert {a["itag"] for a in resp["audioStreams"]} == {140}
-    # Without a proxy, nothing is dropped.
+    # Dropping marks the result partial so it is not cached.
+    assert resp.get("_partial") is True
+    # Without a proxy, nothing is dropped and the result is complete.
     raw = map_streams_response(info)
     assert len(raw["videoStreams"]) == 2 and len(raw["audioStreams"]) == 2
+    assert "_partial" not in raw
+
+
+def test_full_probe_is_not_partial() -> None:
+    resp = map_streams_response(
+        _with_ranges(_video_info()), proxy_url="https://proxy.example"
+    )
+    assert "_partial" not in resp
+    assert len(resp["videoStreams"]) == 2 and len(resp["audioStreams"]) == 2
 
 
 def test_stream_urls_raw_when_no_proxy_url() -> None:

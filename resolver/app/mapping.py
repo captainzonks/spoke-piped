@@ -206,6 +206,7 @@ def map_streams_response(
     """
     videos: list[dict[str, Any]] = []
     audios: list[dict[str, Any]] = []
+    dropped = 0
 
     for fmt in info.get("formats", []):
         if _is_skippable(fmt):
@@ -214,20 +215,24 @@ def map_streams_response(
         acodec = fmt.get("acodec", "none")
         video_only = vcodec != "none" and acodec == "none"
         audio_only = acodec != "none" and vcodec == "none"
+        is_candidate = (video_only and fmt.get("height")) or audio_only
+        if not is_candidate:
+            # muxed (both codecs) and codec-less formats are intentionally
+            # dropped: clients want adaptive video-only + audio-only pairs.
+            continue
         # When serving a Piped frontend (proxy_url set) the client builds a DASH
         # SegmentBase per stream, so a stream whose byte ranges could not be
         # probed would produce an invalid manifest (shaka 4002). Drop those;
         # native clients (no proxy_url) keep every stream regardless.
         if proxy_url and "_segment_range" not in fmt:
+            dropped += 1
             continue
-        if video_only and fmt.get("height"):
+        if video_only:
             videos.append(map_video_stream(fmt, proxy_url))
-        elif audio_only:
+        else:
             audios.append(map_audio_stream(fmt, proxy_url))
-        # muxed (both codecs) and codec-less formats are intentionally dropped:
-        # clients want adaptive video-only + audio-only pairs.
 
-    return {
+    response = {
         "title": info.get("title", "") or "",
         "description": info.get("description", "") or "",
         "uploadDate": _iso_date(info.get("upload_date")),
@@ -259,6 +264,12 @@ def map_streams_response(
         "chapters": _map_chapters(info),
         "previewFrames": [],
     }
+    if dropped:
+        # Internal marker (popped before serialization): some adaptive streams
+        # failed range-probing, so this result is incomplete and must not be
+        # cached — the next request retries and should recover them.
+        response["_partial"] = True
+    return response
 
 
 def map_search_response(info: dict[str, Any]) -> dict[str, Any]:
