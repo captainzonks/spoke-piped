@@ -57,6 +57,22 @@ no auth). `yt-dlp`, the bgutil plugin, and the provider image move fast — bump
 `resolver/requirements.txt` and `PIPED_BGUTIL_IMAGE` together when extraction
 breaks.
 
+#### Proxy URL signing (`HASH_SECRET`)
+
+`piped-proxy` validates a per-URL `qhash` signature when `HASH_SECRET` is set,
+rejecting unsigned requests (anti-abuse). It reads the secret from the
+**`HASH_SECRET` env var only** (not `*_FILE`), so the proxy service uses a small
+entrypoint that exports it from the mounted secret before launching. Every
+producer of proxied URLs must sign with the same secret:
+
+- `piped-backend` signs via `PROXY_HASH_SECRET` in `config.properties`.
+- `piped-resolver` signs via `PROXY_HASH_SECRET_FILE` (mounted secret); leave it
+  empty only if the proxy runs without `HASH_SECRET`.
+
+The signature is BLAKE3 over the sorted, percent-decoded query `(key, value)`
+pairs (excluding `qhash`/`range`/`rewrite`), then the request path, then the
+secret — first 8 hex chars.
+
 ## Routing
 
 Three Traefik subdomains are exposed on `${DOMAIN}`. The subdomain prefix

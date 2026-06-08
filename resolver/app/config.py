@@ -33,6 +33,11 @@ class Config:
     # web frontend can proxy thumbnails/streams. Empty = frontend uses direct
     # URLs. Set to the site's ytproxy host (e.g. https://tubeproxy.example.com).
     proxy_url: str
+    # Shared secret for signing proxied stream URLs (piped-proxy `qhash`). When
+    # the proxy enforces HASH_SECRET, unsigned URLs are rejected (403); this
+    # must equal the proxy's secret. Empty = emit unsigned URLs (proxy must run
+    # without HASH_SECRET).
+    proxy_hash_secret: bytes
     # In-process result cache. googlevideo URLs carry an ~6h `expire`, so a
     # sub-expiry TTL keeps responses valid while cutting repeat extraction.
     cache_ttl: int
@@ -45,6 +50,14 @@ class Config:
     allowed_origins: tuple[str, ...] = field(default=("*",))
 
     @staticmethod
+    def _read_proxy_secret() -> bytes:
+        path = os.getenv("PROXY_HASH_SECRET_FILE")
+        if path and os.path.exists(path):
+            with open(path, "rb") as fh:
+                return fh.read().rstrip(b"\n")
+        return (os.getenv("PROXY_HASH_SECRET", "") or "").encode()
+
+    @staticmethod
     def from_env() -> "Config":
         return Config(
             host=os.getenv("RESOLVER_HOST", "0.0.0.0"),
@@ -55,6 +68,7 @@ class Config:
             player_clients=_split_csv(os.getenv("YTDLP_PLAYER_CLIENTS", "")),
             proxy=os.getenv("RESOLVER_PROXY") or None,
             proxy_url=(os.getenv("PROXY_URL", "") or "").rstrip("/"),
+            proxy_hash_secret=Config._read_proxy_secret(),
             cache_ttl=int(os.getenv("CACHE_TTL", "3600")),
             cache_maxsize=int(os.getenv("CACHE_MAXSIZE", "512")),
             search_limit=int(os.getenv("SEARCH_LIMIT", "20")),

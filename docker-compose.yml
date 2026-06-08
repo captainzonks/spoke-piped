@@ -187,6 +187,14 @@ services:
     restart: on-failure
     init: true
 
+    # piped-proxy reads HASH_SECRET from the env var only (no _FILE support).
+    # Export it from the mounted secret before launching so signed (qhash)
+    # mode is actually enforced; $$ escapes compose interpolation.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - export HASH_SECRET="$$(cat "$$HASH_SECRET_FILE")"; exec /app/piped-proxy
+
     security_opt:
       - no-new-privileges=true
     mem_limit: 1G
@@ -272,12 +280,16 @@ services:
       - BGUTIL_BASE_URL=http://piped-bgutil:4416
       - YTDLP_PLAYER_CLIENTS=${PIPED_RESOLVER_PLAYER_CLIENTS}
       - PROXY_URL=${PIPED_RESOLVER_PROXY_URL}
+      - PROXY_HASH_SECRET_FILE=/run/secrets/piped_proxy_hash_secret
       - CACHE_TTL=${PIPED_RESOLVER_CACHE_TTL}
       - SEARCH_LIMIT=${PIPED_RESOLVER_SEARCH_LIMIT}
       - ALLOWED_ORIGINS=${PIPED_RESOLVER_ALLOWED_ORIGINS}
 
     volumes:
       - ${LOCALTIME}:/etc/localtime:ro
+
+    secrets:
+      - piped_proxy_hash_secret
 
   #======================================
   # PIPED-BGUTIL - bgutil POT provider for the resolver (internal only)
