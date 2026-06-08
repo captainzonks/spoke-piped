@@ -19,7 +19,7 @@ schema unchanged:
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 # yt-dlp protocols that are not progressive HTTP ranges. Native players and
 # ffmpeg both play the direct googlevideo ranges more reliably than these.
@@ -134,6 +134,27 @@ def _map_chapters(info: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _content_length(fmt: dict[str, Any]) -> int:
+    val = fmt.get("filesize") or fmt.get("filesize_approx")
+    if val:
+        return int(val)
+    # Fall back to the googlevideo `clen` query param.
+    clen = parse_qs(urlsplit(fmt.get("url", "") or "").query).get("clen")
+    return int(clen[0]) if clen and clen[0].isdigit() else 0
+
+
+def _segment_ranges(fmt: dict[str, Any]) -> dict[str, int]:
+    """DASH SegmentBase byte ranges (probed in ranges.py), or -1 sentinels.
+
+    Piped uses -1 to mean "unknown"; the frontend only builds a SegmentBase
+    when the values are present and non-negative.
+    """
+    rng = fmt.get("_segment_range")
+    if rng:
+        return rng
+    return {"initStart": -1, "initEnd": -1, "indexStart": -1, "indexEnd": -1}
+
+
 def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     height = int(fmt.get("height") or 0)
@@ -149,6 +170,8 @@ def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]
         "bitrate": _bitrate_bps(fmt, "tbr", "vbr"),
         "videoOnly": True,
         "itag": _itag(fmt.get("format_id", "")),
+        "contentLength": _content_length(fmt),
+        **_segment_ranges(fmt),
     }
 
 
@@ -166,6 +189,8 @@ def map_audio_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]
         "itag": _itag(fmt.get("format_id", "")),
         "audioTrackType": _track_type(fmt),
         "audioTrackLocale": fmt.get("language"),
+        "contentLength": _content_length(fmt),
+        **_segment_ranges(fmt),
     }
 
 

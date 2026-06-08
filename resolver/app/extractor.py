@@ -13,7 +13,8 @@ from typing import Any
 from yt_dlp import YoutubeDL
 
 from .config import Config
-from .mapping import map_search_response, map_streams_response
+from .mapping import _is_skippable, map_search_response, map_streams_response
+from .ranges import attach_segment_ranges
 
 _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
@@ -62,6 +63,15 @@ def extract_streams(config: Config, video_id: str) -> dict[str, Any]:
         info = ydl.extract_info(
             f"https://www.youtube.com/watch?v={video_id}", download=False
         )
+    # Probe DASH byte ranges for the adaptive formats we will emit, so the
+    # Piped frontend can build a working SegmentBase (yt-dlp drops these).
+    adaptive = [
+        f
+        for f in info.get("formats", [])
+        if not _is_skippable(f)
+        and (f.get("vcodec", "none") != "none") != (f.get("acodec", "none") != "none")
+    ]
+    attach_segment_ranges(adaptive)
     response = map_streams_response(info, proxy_url=config.proxy_url)
     if not response["videoStreams"] and not response["audioStreams"]:
         raise ExtractionError(

@@ -207,6 +207,35 @@ def test_stream_urls_raw_when_no_proxy_url() -> None:
     assert resp["audioStreams"][0]["url"].startswith("https://gv/")
 
 
+def test_segment_ranges_default_to_unknown_sentinel() -> None:
+    resp = map_streams_response(_video_info())
+    for s in resp["videoStreams"] + resp["audioStreams"]:
+        assert s["initStart"] == -1
+        assert s["indexEnd"] == -1
+        assert "contentLength" in s
+
+
+def test_segment_ranges_emitted_when_probed() -> None:
+    info = _video_info()
+    # Simulate ranges.attach_segment_ranges having probed the H.264 format.
+    for f in info["formats"]:
+        if f["format_id"] == "137":
+            f["filesize"] = 5_000_000
+            f["_segment_range"] = {
+                "initStart": 0,
+                "initEnd": 738,
+                "indexStart": 739,
+                "indexEnd": 1573,
+            }
+    resp = map_streams_response(info)
+    mp4 = next(v for v in resp["videoStreams"] if v["itag"] == 137)
+    assert mp4["initStart"] == 0
+    assert mp4["initEnd"] == 738
+    assert mp4["indexStart"] == 739
+    assert mp4["indexEnd"] == 1573
+    assert mp4["contentLength"] == 5_000_000
+
+
 def test_search_maps_entries_to_piped_items() -> None:
     info = {
         "entries": [
