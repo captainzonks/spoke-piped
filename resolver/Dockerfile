@@ -16,6 +16,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
+# Source is COPYed as root; ensure the non-root runtime user can read it
+# regardless of the host file mode (cloned files may be group-only 0640).
+RUN chmod -R a+rX app
 
 # Non-root.
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin appuser
