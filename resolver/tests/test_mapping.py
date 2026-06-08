@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from app.mapping import map_search_response, map_streams_response
+import blake3
+
+from app.mapping import _compute_qhash, map_search_response, map_streams_response
 
 
 def _video_info() -> dict:
@@ -250,6 +252,39 @@ def test_stream_urls_raw_when_no_proxy_url() -> None:
     resp = map_streams_response(_video_info())  # proxy_url defaults to ""
     assert resp["videoStreams"][0]["url"].startswith("https://gv/")
     assert resp["audioStreams"][0]["url"].startswith("https://gv/")
+
+
+def test_qhash_matches_piped_proxy_scheme() -> None:
+    # Independent reference: BLAKE3 over sorted decoded (k,v) pairs (excluding
+    # qhash/range/rewrite), then the path, then the secret; first 8 hex chars.
+    secret = b"testsecret"
+    query = "itag=137&host=rr1.googlevideo.com&xpc=EgVo2aDSNQ%3D%3D&range=0-1&qhash=zz"
+    path = "/videoplayback"
+    h = blake3.blake3()
+    for k, v in sorted(
+        {
+            (b"itag", b"137"),
+            (b"host", b"rr1.googlevideo.com"),
+            (b"xpc", b"EgVo2aDSNQ=="),  # percent-DECODED
+        }
+    ):
+        h.update(k)
+        h.update(v)
+    h.update(path.encode())
+    h.update(secret)
+    assert _compute_qhash(query, path, secret) == h.hexdigest()[:8]
+
+
+def test_stream_urls_signed_when_secret_set() -> None:
+    resp = map_streams_response(
+        _with_ranges(_video_info()),
+        proxy_url="https://proxy.example",
+        secret=b"testsecret",
+    )
+    for s in resp["videoStreams"] + resp["audioStreams"]:
+        assert "&qhash=" in s["url"]
+        qh = s["url"].rsplit("qhash=", 1)[1]
+        assert len(qh) == 8
 
 
 def test_segment_ranges_default_to_unknown_sentinel() -> None:

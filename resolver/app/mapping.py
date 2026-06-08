@@ -19,22 +19,54 @@ schema unchanged:
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import parse_qs, unquote, urlsplit, urlunsplit
+
+import blake3
 
 # yt-dlp protocols that are not progressive HTTP ranges. Native players and
 # ffmpeg both play the direct googlevideo ranges more reliably than these.
 _SKIP_PROTOCOLS = ("m3u8", "m3u8_native", "http_dash_segments", "dash")
 
 
-def _proxy_stream_url(url: str, proxy_url: str) -> str:
+def _compute_qhash(query: str, path: str, secret: bytes) -> str:
+    """piped-proxy ``qhash`` signature (BLAKE3, first 8 hex chars).
+
+    Mirrors piped-proxy's validation exactly: hash the percent-DECODED
+    (key, value) pairs of every query param except qhash/range/rewrite, sorted
+    as byte tuples, then the path (only up to and including ``/range/`` when the
+    path is range-based), then the secret. Verified byte-for-byte against the
+    Java backend's own signatures.
+    """
+    pairs: set[tuple[bytes, bytes]] = set()
+    for kv in query.split("&"):
+        if not kv:
+            continue
+        key, _, value = kv.partition("=")
+        if key in ("qhash", "range", "rewrite"):
+            continue
+        pairs.add((unquote(key).encode(), unquote(value).encode()))
+    hasher = blake3.blake3()
+    for key_b, value_b in sorted(pairs):
+        hasher.update(key_b)
+        hasher.update(value_b)
+    path_b = path.encode()
+    marker = b"/range/"
+    idx = path_b.find(marker)
+    hasher.update(path_b[: idx + 1] if idx != -1 else path_b)
+    hasher.update(secret)
+    return hasher.hexdigest()[:8]
+
+
+def _proxy_stream_url(url: str, proxy_url: str, secret: bytes = b"") -> str:
     """Rewrite a raw googlevideo URL through a Piped media proxy.
 
     Matches Piped-Backend's ``rewriteURL`` scheme so the Piped web frontend and
     piped-proxy can serve the stream without browser CORS errors:
-    ``{proxy}{path}?{original_query}&host={original_host}``.
+    ``{proxy}{path}?{original_query}&host={original_host}[&qhash=...]``.
 
-    When ``proxy_url`` is empty the raw URL is returned unchanged — native
-    players (ExoPlayer/ffmpeg) can fetch googlevideo directly.
+    When ``secret`` is set the URL is signed with a ``qhash`` so a proxy running
+    in HASH_SECRET (signed) mode accepts it. When ``proxy_url`` is empty the raw
+    URL is returned unchanged — native players fetch googlevideo directly.
     """
     if not proxy_url or not url:
         return url
@@ -43,6 +75,8 @@ def _proxy_stream_url(url: str, proxy_url: str) -> str:
         return url
     sep = "&" if src.query else ""
     query = f"{src.query}{sep}host={src.netloc}"
+    if secret:
+        query = f"{query}&qhash={_compute_qhash(query, src.path, secret)}"
     proxy = urlsplit(proxy_url)
     return urlunsplit((proxy.scheme, proxy.netloc, src.path, query, ""))
 
@@ -155,11 +189,13 @@ def _segment_ranges(fmt: dict[str, Any]) -> dict[str, int]:
     return {"initStart": -1, "initEnd": -1, "indexStart": -1, "indexEnd": -1}
 
 
-def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
+def map_video_stream(
+    fmt: dict[str, Any], proxy_url: str = "", secret: bytes = b""
+) -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     height = int(fmt.get("height") or 0)
     return {
-        "url": _proxy_stream_url(fmt["url"], proxy_url),
+        "url": _proxy_stream_url(fmt["url"], proxy_url, secret),
         "mimeType": f"video/{'mp4' if ext == 'mp4' else 'webm'}",
         "format": _video_format(ext),
         "codec": fmt.get("vcodec"),
@@ -175,11 +211,13 @@ def map_video_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]
     }
 
 
-def map_audio_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]:
+def map_audio_stream(
+    fmt: dict[str, Any], proxy_url: str = "", secret: bytes = b""
+) -> dict[str, Any]:
     ext = fmt.get("ext", "") or ""
     abr = int(float(fmt.get("abr") or 0))
     return {
-        "url": _proxy_stream_url(fmt["url"], proxy_url),
+        "url": _proxy_stream_url(fmt["url"], proxy_url, secret),
         "mimeType": f"audio/{'mp4' if ext in ('m4a', 'mp4') else 'webm'}",
         "format": _audio_format(ext),
         "codec": fmt.get("acodec"),
@@ -195,7 +233,7 @@ def map_audio_stream(fmt: dict[str, Any], proxy_url: str = "") -> dict[str, Any]
 
 
 def map_streams_response(
-    info: dict[str, Any], proxy_url: str = ""
+    info: dict[str, Any], proxy_url: str = "", secret: bytes = b""
 ) -> dict[str, Any]:
     """Map a yt-dlp video info dict to a full Piped ``/streams`` response.
 
@@ -228,9 +266,9 @@ def map_streams_response(
             dropped += 1
             continue
         if video_only:
-            videos.append(map_video_stream(fmt, proxy_url))
+            videos.append(map_video_stream(fmt, proxy_url, secret))
         else:
-            audios.append(map_audio_stream(fmt, proxy_url))
+            audios.append(map_audio_stream(fmt, proxy_url, secret))
 
     response = {
         "title": info.get("title", "") or "",

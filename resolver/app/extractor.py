@@ -76,7 +76,9 @@ def extract_streams(config: Config, video_id: str) -> dict[str, Any]:
             != (f.get("acodec", "none") != "none")
         ]
         attach_segment_ranges(adaptive)
-    response = map_streams_response(info, proxy_url=config.proxy_url)
+    response = map_streams_response(
+        info, proxy_url=config.proxy_url, secret=config.proxy_hash_secret
+    )
     if not response["videoStreams"] and not response["audioStreams"]:
         raise ExtractionError(
             "no adaptive formats returned — po_token or extractor failure"
