@@ -34,6 +34,18 @@ http:
           interval: 30s
           timeout: 5s
 
+    # Adaptive resolver (yt-dlp + bgutil POT). Serves only the /streams path on
+    # the API host; all other Piped endpoints stay on piped-backend-svc.
+    piped-resolver-svc:
+      loadBalancer:
+        servers:
+          - url: http://piped-resolver:8000
+        passHostHeader: true
+        healthCheck:
+          path: /healthcheck
+          interval: 30s
+          timeout: 5s
+
     piped-proxy-svc:
       loadBalancer:
         servers:

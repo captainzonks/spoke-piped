@@ -232,3 +232,75 @@ services:
 
     volumes:
       - ${LOCALTIME}:/etc/localtime:ro
+
+  #======================================
+  # PIPED-RESOLVER - yt-dlp adaptive resolver (serves tubeapi /streams)
+  #======================================
+  piped-resolver:
+    <<: [*ssl, *log_small]
+    image: ${PIPED_RESOLVER_IMAGE}
+    build:
+      context: ./resolver
+    hostname: piped-resolver
+    container_name: piped-resolver
+    restart: on-failure
+    init: true
+
+    depends_on:
+      - piped-bgutil
+
+    security_opt:
+      - no-new-privileges=true
+    mem_limit: 1G
+    cpus: 2.0
+
+    networks:
+      troxy:
+        ipv4_address: ${PIPED_RESOLVER_IP}
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthcheck',timeout=5).status==200 else 1)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+    environment:
+      - TZ=${TZ}
+      - RESOLVER_HOST=0.0.0.0
+      - RESOLVER_PORT=8000
+      - BGUTIL_BASE_URL=http://piped-bgutil:4416
+      - YTDLP_PLAYER_CLIENTS=${PIPED_RESOLVER_PLAYER_CLIENTS}
+      - PROXY_URL=${PIPED_RESOLVER_PROXY_URL}
+      - CACHE_TTL=${PIPED_RESOLVER_CACHE_TTL}
+      - SEARCH_LIMIT=${PIPED_RESOLVER_SEARCH_LIMIT}
+      - ALLOWED_ORIGINS=${PIPED_RESOLVER_ALLOWED_ORIGINS}
+
+    volumes:
+      - ${LOCALTIME}:/etc/localtime:ro
+
+  #======================================
+  # PIPED-BGUTIL - bgutil POT provider for the resolver (internal only)
+  #======================================
+  piped-bgutil:
+    <<: [*log_small]
+    image: ${PIPED_BGUTIL_IMAGE}
+    hostname: piped-bgutil
+    container_name: piped-bgutil
+    restart: on-failure
+    init: true
+
+    security_opt:
+      - no-new-privileges=true
+    mem_limit: 512M
+    cpus: 1.0
+
+    networks:
+      troxy:
+        ipv4_address: ${PIPED_BGUTIL_IP}
+
+    environment:
+      - TZ=${TZ}
+
+    volumes:
+      - ${LOCALTIME}:/etc/localtime:ro
