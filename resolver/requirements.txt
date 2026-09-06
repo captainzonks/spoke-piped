@@ -4,7 +4,7 @@
 # the piped-bgutil provider server image tag.
 fastapi==0.136.3
 uvicorn[standard]==0.49.0
-yt-dlp==2026.3.17
+yt-dlp==2026.8.19
 bgutil-ytdlp-pot-provider==1.3.1
 cachetools==7.1.4
 blake3==1.0.8
